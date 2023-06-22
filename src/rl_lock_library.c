@@ -257,6 +257,48 @@ rl_descriptor rl_dup2(rl_descriptor lfd, int newd) {
 	return new_rl_descriptor;
 }
 
+pid_t rl_fork() {
+
+	pid_t pid = fork();
+
+	if(pid < 0) {
+
+		return -1;
+	} else if(pid > 0) {
+		
+		return pid;
+	}
+	
+	pid_t parent = getppid();
+
+	//for all files
+	for(int i=0; i<all_files.nb_files; i++) {
+		
+		rl_open_file *file = all_files.tab_open_files[i];
+
+		rl_lock *curr = &file->lock_table[file->first];
+
+		//for all locks 
+		while(curr->next_lock >= 0) {
+
+			//for all owners
+			for(size_t i=0; i < curr->nb_owners; i++) {
+
+				owner ow = curr->lock_owners[i];
+
+				//if the process is already owner
+				if(ow.proc == parent) {
+					curr->lock_owners[curr->nb_owners] = (owner) { .proc = getpid(), .des = ow.des};
+					curr->nb_owners++;
+				}
+			}
+
+			curr = &file->lock_table[curr->next_lock];
+		}
+	}
+	
+	return 0;
+}
 
 rl_descriptor rl_open(const char *path, int oflag, ...) {
 

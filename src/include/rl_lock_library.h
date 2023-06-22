@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 #define NB_FILES 256
 #define NB_LOCKS 10
