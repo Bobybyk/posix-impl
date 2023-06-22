@@ -300,6 +300,53 @@ pid_t rl_fork() {
 	return 0;
 }
 
+int rl_close(rl_descriptor lfd) {
+
+	rl_open_file *file = lfd.f;
+	owner lfd_owner = {.proc = getpid(), .des = lfd.d };
+	
+	pthread_mutex_lock(&file->mutex);
+	while(file->busy){
+		pthread_cond_wait(&file->cond, &file->mutex);
+	}	
+	file->busy = true;
+
+	// parcours le tableau des verrous et supprime les propriétaires
+	for (int i = 0 ; i < NB_LOCKS ; i++) {
+		rl_lock *lock = &file->lock_table[i];
+
+		// vérifie chaque propriétaire
+		for (size_t j = 0 ; j < lock->nb_owners ; j++) {
+			// si le propriétaire correspond à lfd_owner, on le supprime
+			owner lock_owner = lock->lock_owners[j];
+			if (lock_owner.proc == lfd_owner.proc && lock_owner.des == lfd_owner.des) {
+				// marque le propriétaire comme supprimé
+				lock->lock_owners[j].proc = 0;
+				// vérifie si c'était l'unique propriétaire
+				if (lock->nb_owners == 1) {
+					lock->type = 0;
+				}
+				break;
+			}
+		}
+	}
+
+	file->busy = false;
+	pthread_mutex_unlock(&file->mutex);
+	pthread_cond_signal(&file->cond);
+
+	//liberer la memoire
+ 	if (munmap(lfd.f, sizeof(rl_open_file)) == -1){ 
+		perror("munmap");
+		return -1;
+	}
+    
+	// ferme le descripteur et retourne le résultat
+    printf("[SORTIE] rl_close\n");
+    return close(lfd.d);
+
+}
+
 rl_descriptor rl_open(const char *path, int oflag, ...) {
 
 	int ret;
@@ -370,3 +417,5 @@ rl_descriptor rl_open(const char *path, int oflag, ...) {
 
 	return desc;
 }
+
+
