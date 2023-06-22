@@ -35,7 +35,7 @@ static int initialiser_mutex(pthread_mutex_t *pmutex){
  * @param pcond 	pointeur vers la condition à initialiser
  * @return  		0 en cas de succès, valeur négative sinon
  */
-static int initialiser_cond(pthread_cond_t *pcond){
+static int initialiser_cond(pthread_cond_t *pcond) {
 
 	pthread_condattr_t condattr;
 
@@ -97,7 +97,7 @@ static int smo_format_name(int fd, char *dest) {
 }
 
 /**
- * Ouvre un smo et précise si celui-ci existait déjà
+ * @brief Ouvre un smo et précise si celui-ci existait déjà
  *
  * @param name	Le nom a donner au nouveau fichier
  * @param new 	Le booléen dans lequel retourner si le fichier a été nouvellement créé
@@ -131,7 +131,7 @@ static int smo_open(char *name, bool *new) {
 }
 
 /**
- * Initialise un rl_open_file nouvellement créé
+ * @brief Initialise un rl_open_file nouvellement créé
  *
  * @param file	Un pointeur vers la structure a initialiser
  * @return 	0 en cas de succès, -1 sinon
@@ -169,6 +169,94 @@ static int rl_open_init_file(rl_open_file *file) {
 
 	return 0;
 }
+
+/**
+ * @brief factorizes the duplicate code for dup and dup2
+ * 
+ * @param lfd 	The descriptor to duplicate 
+ * @param newd 	The descriptor to use with duplication
+ */
+static void rl_dup_common_code(rl_descriptor lfd, int newd) {
+
+	owner new_owner = {.proc = getpid(), .des = newd };
+
+	rl_open_file *file = lfd.f;
+
+	rl_lock *curr = &file->lock_table[file->first];
+
+	//for all locks 
+	while(curr->next_lock >= 0) {
+
+		//for all owners
+		for(size_t i=0; i < curr->nb_owners; i++) {
+
+			owner ow = curr->lock_owners[i];
+
+			//if the process is already owner
+			if(ow.des == lfd.d && ow.proc == getpid()) {
+
+				//add owner for new descriptor 
+				curr->lock_owners[curr->nb_owners] = new_owner;
+				curr->nb_owners++;
+				break;
+			}
+		}
+
+		curr = &file->lock_table[curr->next_lock];
+	}
+}
+
+/**
+ * @brief Duplicates a descriptor
+ * 
+ * @param lfd The descriptor to duplicate
+ *
+ * @return The new rl_descriptor 
+ */
+rl_descriptor rl_dup(rl_descriptor lfd) {
+
+	rl_descriptor new_rl_descriptor = { .d = -1, .f = NULL};
+	
+	int newd = dup(lfd.d);
+	if(newd < 0) {
+		
+		return new_rl_descriptor;
+	}
+
+	rl_dup_common_code(lfd, newd);
+
+	new_rl_descriptor.d = newd; 
+	new_rl_descriptor.f = lfd.f;
+
+	return new_rl_descriptor;
+}
+
+/**
+ * @brief Duplicates a descriptor
+ * 
+ * @param lfd 	The descriptor to duplicate
+ * @param newd 	The descriptor to use
+ *
+ * @return 	The new rl_descriptor 
+ */
+rl_descriptor rl_dup2(rl_descriptor lfd, int newd) {
+
+	rl_descriptor new_rl_descriptor = { .d = -1, .f = NULL};
+	
+	int ret = dup2(lfd.d, newd);
+	if(ret < 0) {
+		
+		return new_rl_descriptor;
+	}
+
+	rl_dup_common_code(lfd, newd);
+
+	new_rl_descriptor.d = newd; 
+	new_rl_descriptor.f = lfd.f;
+
+	return new_rl_descriptor;
+}
+
 
 rl_descriptor rl_open(const char *path, int oflag, ...) {
 
