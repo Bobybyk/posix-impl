@@ -419,3 +419,71 @@ rl_descriptor rl_open(const char *path, int oflag, ...) {
 }
 
 
+int rl_fcntl_unlock(rl_descriptor * lfd, struct flock *lck){
+	if (lck->l_len == 0){ // Cas simple: lever tous les verrous
+        int i = lfd->f->first;
+        while (i != -2 && i != -1)
+        {
+            //Pour chaque owner
+            for (size_t j = 0; j < lfd->f->lock_table[i].nb_owners; i++)
+            {
+//				size_t debut_lock 
+
+				//verifier s'ils sont les seul owner
+					//verifier le debut du pose de lock
+					//liberer les verrous
+			}
+		}
+	}else{ // Cas particulier
+		//4 cas part:
+			//cas 1 : 
+			
+	}
+	return EXIT_SUCCESS;
+}
+
+
+
+int rl_fcntl_wlock(rl_descriptor * lfd, struct flock *lck){
+	return 0;
+}
+
+int rl_fcntl_rlock(rl_descriptor * lfd, struct flock *lck){
+	return 0;
+}
+
+// ## RL_FTNCL
+int rl_fcntl(rl_descriptor lfd, int cmd, struct flock *lck)
+{
+    switch (lck->l_whence)
+    {
+    	case SEEK_SET:
+        	break;
+    	case SEEK_CUR:
+        	lck->l_whence = SEEK_SET;
+        	if ((lck->l_start = lseek(lfd.d, 0, SEEK_CUR)) == -1)
+				PANIC_EXIT("LSEEK");
+        	break;
+    	case SEEK_END:
+        	lck->l_whence = SEEK_SET;
+        	if ((lck->l_start = lseek(lfd.d, 0, SEEK_END)) == -1)
+            	PANIC_EXIT("LSEEK");
+       		break;
+    }
+    switch (cmd)
+    {
+    case F_SETLK:
+        if (lck->l_type == F_UNLCK) return rl_fcntl_unlock(&lfd, lck);
+        else if (lck->l_type == F_WRLCK)return rl_fcntl_wlock(&lfd, lck);
+        else if (lck->l_type == F_RDLCK)return rl_fcntl_rlock(&lfd, lck);
+        break;
+    case F_SETLKW:
+        break;
+    case F_GETLK:
+        break;
+    default:
+        errno = EAGAIN;
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
