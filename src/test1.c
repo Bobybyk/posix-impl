@@ -8,7 +8,7 @@
 #include "rl_lock_library.h"
 
 
-int main(int argc , char **argv){
+/*nt main(int argc , char **argv){
 
   if(argc != 5){
     fprintf(stderr, "usage : %s file start len R|W \n"
@@ -62,3 +62,4 @@ int main(int argc , char **argv){
   }
   rl_close(d);
 }
+*/

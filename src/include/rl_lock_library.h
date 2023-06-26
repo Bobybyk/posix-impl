@@ -13,8 +13,10 @@
 #include <pthread.h>
 #include <stdlib.h>
 
+#include "panic.h"
+
 #define NB_FILES 256
-#define NB_LOCKS 10
+#define NB_LOCKS 20
 #define NB_OWNERS 5
 
 /*	STRUCTS 	*/
@@ -55,6 +57,8 @@ typedef struct {
 /*	FUNCTIONS 	*/
 /*======================*/
 
+int rl_init_library();
+
 rl_descriptor rl_open(const char *path, int oflag, ...);
 
 int rl_close( rl_descriptor lfd);
@@ -66,5 +70,7 @@ rl_descriptor rl_dup(rl_descriptor lfd);
 rl_descriptor rl_dup2(rl_descriptor lfd, int newd);
 
 pid_t rl_fork();
+
+void rl_debug();
 
 #endif 

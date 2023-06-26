@@ -8,19 +8,22 @@ static rl_all_files all_files;
  * @param pmutex 	pointeur vers le mutex à initialiser
  * @return 		0 en cas de succès, valeur négative sinon
  */
-static int initialiser_mutex(pthread_mutex_t *pmutex){
+static int initialiser_mutex(pthread_mutex_t *pmutex)
+{
 
 	pthread_mutexattr_t mutexattr;
 
 	int ret;
 
 	ret = pthread_mutexattr_init(&mutexattr);
-	if(ret < 0) {
+	if (ret < 0)
+	{
 		return ret;
 	}
 
-	ret = pthread_mutexattr_setpshared(&mutexattr,	PTHREAD_PROCESS_SHARED);
-	if(ret < 0) {
+	ret = pthread_mutexattr_setpshared(&mutexattr, PTHREAD_PROCESS_SHARED);
+	if (ret < 0)
+	{
 		return ret;
 	}
 
@@ -35,29 +38,32 @@ static int initialiser_mutex(pthread_mutex_t *pmutex){
  * @param pcond 	pointeur vers la condition à initialiser
  * @return  		0 en cas de succès, valeur négative sinon
  */
-static int initialiser_cond(pthread_cond_t *pcond) {
+static int initialiser_cond(pthread_cond_t *pcond)
+{
 
 	pthread_condattr_t condattr;
 
 	int ret;
 
-	ret = pthread_condattr_init(&condattr) ;
-	if(ret != 0)  {
+	ret = pthread_condattr_init(&condattr);
+	if (ret != 0)
+	{
 		return ret;
 	}
 
 	ret = pthread_condattr_setpshared(&condattr, PTHREAD_PROCESS_SHARED);
-	if(ret != 0) {
+	if (ret != 0)
+	{
 		return ret;
 	}
 
-	ret = pthread_cond_init(pcond, &condattr) ;
+	ret = pthread_cond_init(pcond, &condattr);
 
 	return ret;
 }
 
-
-int rl_init_library() {
+int rl_init_library()
+{
 
 	all_files.nb_files = 0;
 
@@ -71,13 +77,15 @@ int rl_init_library() {
  * @param dest	string dans lequel retourner le résultat
  * @return	0 en cas de succèes, -1 sinon
  */
-static int smo_format_name(int fd, char *dest) {
+static int smo_format_name(int fd, char *dest)
+{
 
 	int ret;
 
 	struct stat st;
 	ret = fstat(fd, &st);
-	if(ret < 0) {
+	if (ret < 0)
+	{
 
 		return -1;
 	}
@@ -88,7 +96,8 @@ static int smo_format_name(int fd, char *dest) {
 	ino_t ino = st.st_ino;
 
 	ret = sprintf(dest, "f_%ld_%ld", dev, ino);
-	if(ret < 0) {
+	if (ret < 0)
+	{
 
 		return -1;
 	}
@@ -103,26 +112,34 @@ static int smo_format_name(int fd, char *dest) {
  * @param new 	Le booléen dans lequel retourner si le fichier a été nouvellement créé
  * @return 	Le descripteur vers le fichier en cas de succès, -1 sinon
  */
-static int smo_open(char *name, bool *new) {
+static int smo_open(char *name, bool *new)
+{
 
 	*new = true;
 
 	int fd = shm_open(name, O_CREAT | O_RDWR | O_EXCL, 0644);
-	if(fd >= 0) {
+	if (fd >= 0)
+	{
 
-		if(ftruncate(fd, sizeof(rl_open_file)) < 0) {
+		if (ftruncate(fd, sizeof(rl_open_file)) < 0)
+		{
 
 			return -1;
 		}
-	} else if(fd < 0 && errno == EEXIST){
+	}
+	else if (fd < 0 && errno == EEXIST)
+	{
 
 		fd = shm_open(name, O_RDWR, 0644);
-		if(fd < 0) {
+		if (fd < 0)
+		{
 
-			return -1;	
+			return -1;
 		}
 		*new = false;
-	} else {
+	}
+	else
+	{
 
 		return -1;
 	}
@@ -136,31 +153,35 @@ static int smo_open(char *name, bool *new) {
  * @param file	Un pointeur vers la structure a initialiser
  * @return 	0 en cas de succès, -1 sinon
  */
-static int rl_open_init_file(rl_open_file *file) {
+static int rl_open_init_file(rl_open_file *file)
+{
 
 	int ret;
 
 	// première case non utilisée
 	file->first = -2;
-	
-	for(int i = 0; i < NB_LOCKS; i++) {
+
+	for (int i = 0; i < NB_LOCKS; i++)
+	{
 
 		rl_lock *locks = file->lock_table;
 		rl_lock *lock = &locks[i];
 
 		lock->next_lock = -2;
 
-		//file->lock_table[i].next_lock = -2;
-	}		
+		// file->lock_table[i].next_lock = -2;
+	}
 
 	ret = initialiser_mutex(&file->mutex);
-	if(ret < 0) {
+	if (ret < 0)
+	{
 
 		return -1;
 	}
 
 	ret = initialiser_cond(&file->cond);
-	if(ret < 0) {
+	if (ret < 0)
+	{
 
 		return -1;
 	}
@@ -172,30 +193,34 @@ static int rl_open_init_file(rl_open_file *file) {
 
 /**
  * @brief factorizes the duplicate code for dup and dup2
- * 
- * @param lfd 	The descriptor to duplicate 
+ *
+ * @param lfd 	The descriptor to duplicate
  * @param newd 	The descriptor to use with duplication
  */
-static void rl_dup_common_code(rl_descriptor lfd, int newd) {
+static void rl_dup_common_code(rl_descriptor lfd, int newd)
+{
 
-	owner new_owner = {.proc = getpid(), .des = newd };
+	owner new_owner = {.proc = getpid(), .des = newd};
 
 	rl_open_file *file = lfd.f;
 
 	rl_lock *curr = &file->lock_table[file->first];
 
-	//for all locks 
-	while(curr->next_lock >= 0) {
+	// for all locks
+	while (curr->next_lock >= 0)
+	{
 
-		//for all owners
-		for(size_t i=0; i < curr->nb_owners; i++) {
+		// for all owners
+		for (size_t i = 0; i < curr->nb_owners; i++)
+		{
 
 			owner ow = curr->lock_owners[i];
 
-			//if the process is already owner
-			if(ow.des == lfd.d && ow.proc == getpid()) {
+			// if the process is already owner
+			if (ow.des == lfd.d && ow.proc == getpid())
+			{
 
-				//add owner for new descriptor 
+				// add owner for new descriptor
 				curr->lock_owners[curr->nb_owners] = new_owner;
 				curr->nb_owners++;
 				break;
@@ -208,24 +233,26 @@ static void rl_dup_common_code(rl_descriptor lfd, int newd) {
 
 /**
  * @brief Duplicates a descriptor
- * 
+ *
  * @param lfd The descriptor to duplicate
  *
- * @return The new rl_descriptor 
+ * @return The new rl_descriptor
  */
-rl_descriptor rl_dup(rl_descriptor lfd) {
+rl_descriptor rl_dup(rl_descriptor lfd)
+{
 
-	rl_descriptor new_rl_descriptor = { .d = -1, .f = NULL};
-	
+	rl_descriptor new_rl_descriptor = {.d = -1, .f = NULL};
+
 	int newd = dup(lfd.d);
-	if(newd < 0) {
-		
+	if (newd < 0)
+	{
+
 		return new_rl_descriptor;
 	}
 
 	rl_dup_common_code(lfd, newd);
 
-	new_rl_descriptor.d = newd; 
+	new_rl_descriptor.d = newd;
 	new_rl_descriptor.f = lfd.f;
 
 	return new_rl_descriptor;
@@ -233,62 +260,72 @@ rl_descriptor rl_dup(rl_descriptor lfd) {
 
 /**
  * @brief Duplicates a descriptor
- * 
+ *
  * @param lfd 	The descriptor to duplicate
  * @param newd 	The descriptor to use
  *
- * @return 	The new rl_descriptor 
+ * @return 	The new rl_descriptor
  */
-rl_descriptor rl_dup2(rl_descriptor lfd, int newd) {
+rl_descriptor rl_dup2(rl_descriptor lfd, int newd)
+{
 
-	rl_descriptor new_rl_descriptor = { .d = -1, .f = NULL};
-	
+	rl_descriptor new_rl_descriptor = {.d = -1, .f = NULL};
+
 	int ret = dup2(lfd.d, newd);
-	if(ret < 0) {
-		
+	if (ret < 0)
+	{
+
 		return new_rl_descriptor;
 	}
 
 	rl_dup_common_code(lfd, newd);
 
-	new_rl_descriptor.d = newd; 
+	new_rl_descriptor.d = newd;
 	new_rl_descriptor.f = lfd.f;
 
 	return new_rl_descriptor;
 }
 
-pid_t rl_fork() {
+pid_t rl_fork()
+{
 
 	pid_t pid = fork();
 
-	if(pid < 0) {
+	if (pid < 0)
+	{
 
 		return -1;
-	} else if(pid > 0) {
-		
+	}
+	else if (pid > 0)
+	{
+
 		return pid;
 	}
-	
+
 	pid_t parent = getppid();
 
-	//for all files
-	for(int i=0; i<all_files.nb_files; i++) {
-		
+	// for all files
+	for (int i = 0; i < all_files.nb_files; i++)
+	{
+
 		rl_open_file *file = all_files.tab_open_files[i];
 
 		rl_lock *curr = &file->lock_table[file->first];
 
-		//for all locks 
-		while(curr->next_lock >= 0) {
+		// for all locks
+		while (curr->next_lock >= 0)
+		{
 
-			//for all owners
-			for(size_t i=0; i < curr->nb_owners; i++) {
+			// for all owners
+			for (size_t i = 0; i < curr->nb_owners; i++)
+			{
 
 				owner ow = curr->lock_owners[i];
 
-				//if the process is already owner
-				if(ow.proc == parent) {
-					curr->lock_owners[curr->nb_owners] = (owner) { .proc = getpid(), .des = ow.des};
+				// if the process is already owner
+				if (ow.proc == parent)
+				{
+					curr->lock_owners[curr->nb_owners] = (owner){.proc = getpid(), .des = ow.des};
 					curr->nb_owners++;
 				}
 			}
@@ -296,34 +333,40 @@ pid_t rl_fork() {
 			curr = &file->lock_table[curr->next_lock];
 		}
 	}
-	
+
 	return 0;
 }
 
-int rl_close(rl_descriptor lfd) {
+int rl_close(rl_descriptor lfd)
+{
 
 	rl_open_file *file = lfd.f;
-	owner lfd_owner = {.proc = getpid(), .des = lfd.d };
-	
+	owner lfd_owner = {.proc = getpid(), .des = lfd.d};
+
 	pthread_mutex_lock(&file->mutex);
-	while(file->busy){
+	while (file->busy)
+	{
 		pthread_cond_wait(&file->cond, &file->mutex);
-	}	
+	}
 	file->busy = true;
 
 	// parcours le tableau des verrous et supprime les propriétaires
-	for (int i = 0 ; i < NB_LOCKS ; i++) {
+	for (int i = 0; i < NB_LOCKS; i++)
+	{
 		rl_lock *lock = &file->lock_table[i];
 
 		// vérifie chaque propriétaire
-		for (size_t j = 0 ; j < lock->nb_owners ; j++) {
+		for (size_t j = 0; j < lock->nb_owners; j++)
+		{
 			// si le propriétaire correspond à lfd_owner, on le supprime
 			owner lock_owner = lock->lock_owners[j];
-			if (lock_owner.proc == lfd_owner.proc && lock_owner.des == lfd_owner.des) {
+			if (lock_owner.proc == lfd_owner.proc && lock_owner.des == lfd_owner.des)
+			{
 				// marque le propriétaire comme supprimé
 				lock->lock_owners[j].proc = 0;
 				// vérifie si c'était l'unique propriétaire
-				if (lock->nb_owners == 1) {
+				if (lock->nb_owners == 1)
+				{
 					lock->type = 0;
 				}
 				break;
@@ -335,27 +378,27 @@ int rl_close(rl_descriptor lfd) {
 	pthread_mutex_unlock(&file->mutex);
 	pthread_cond_signal(&file->cond);
 
-	//liberer la memoire
- 	if (munmap(lfd.f, sizeof(rl_open_file)) == -1){ 
+	// liberer la memoire
+	if (munmap(lfd.f, sizeof(rl_open_file)) == -1)
+	{
 		perror("munmap");
 		return -1;
 	}
-    
-	// ferme le descripteur et retourne le résultat
-    printf("[SORTIE] rl_close\n");
-    return close(lfd.d);
 
+	// ferme le descripteur et retourne le résultat
+	printf("[SORTIE] rl_close\n");
+	return close(lfd.d);
 }
 
-rl_descriptor rl_open(const char *path, int oflag, ...) {
+rl_descriptor rl_open(const char *path, int oflag, ...)
+{
 
 	int ret;
 
 	// initialisation avec valeurs par défaut "erronnées"
 	rl_descriptor desc = {
 		.d = -1,
-		.f = NULL
-	};
+		.f = NULL};
 
 	va_list ap;
 
@@ -367,7 +410,8 @@ rl_descriptor rl_open(const char *path, int oflag, ...) {
 	va_end(ap);
 
 	int fd = open(path, oflag, perms);
-	if(fd < 0) {
+	if (fd < 0)
+	{
 
 		return desc;
 	}
@@ -377,113 +421,425 @@ rl_descriptor rl_open(const char *path, int oflag, ...) {
 
 	//  section 5.3 du sujet, shared memory object
 	ret = smo_format_name(fd, smo_name);
-	if(ret < 0) {
+	if (ret < 0)
+	{
 
 		return desc;
 	}
 
 	int smo_fd = smo_open(smo_name, &smo_created);
-	if(smo_fd < 0) {
+	if (smo_fd < 0)
+	{
 
 		return desc;
 	}
 
 	rl_open_file *file = mmap(NULL, sizeof(rl_open_file), PROT_READ | PROT_WRITE, MAP_SHARED, smo_fd, 0);
 
-	if (file == MAP_FAILED) {
+	if (file == MAP_FAILED)
+	{
 
 		return desc;
 	}
 
 	ret = close(smo_fd);
 
-	if (ret < 0) {
+	if (ret < 0)
+	{
 
 		return desc;
 	}
 
-	if(smo_created) {
+	if (smo_created)
+	{
 
 		ret = rl_open_init_file(file);
-		if(ret < 0) {
+		if (ret < 0)
+		{
 
 			return desc;
 		}
 	}
 
+	for (int i = 0; i < NB_LOCKS; i++)
+		file->lock_table[i].next_lock = -2;
+	
+
 	// initialisation avec bonnes valeurs
 	desc.d = fd;
 	desc.f = file;
 
+	all_files.tab_open_files[all_files.nb_files] = file;
+	all_files.nb_files++;
+
 	return desc;
 }
 
+/* Fonction auxilliere */
 
-int rl_fcntl_unlock(rl_descriptor * lfd, struct flock *lck){
-	if (lck->l_len == 0){ // Cas simple: lever tous les verrous
-        int i = lfd->f->first;
-        while (i != -2 && i != -1)
-        {
-            //Pour chaque owner
-            for (size_t j = 0; j < lfd->f->lock_table[i].nb_owners; i++)
-            {
-//				size_t debut_lock 
+int add_lock(rl_descriptor *lfd, rl_lock * lck){
+	int ptr = lfd->f->first;
+	if (ptr == -2){
+		lck->next_lock = -1;
+		lfd->f->lock_table[0] = *lck;
+		return 0;
+	}
+	// ON AJOUTE LE LOCK DANS UNE CASE NON UTILISE
+	int i;
+	for (i = 0; i < NB_LOCKS; i++){
+		if (lfd->f->lock_table[i].next_lock == -2)break;
+	}
+	int prev = 0;
+	// ON PARCOURS LA LISTE DE LOCK
+	while (ptr != -2 && ptr != -1){
+		prev = ptr;
+		ptr = lfd->f->lock_table[ptr].next_lock;
+	}
+	lck->next_lock = -1;
+	if(prev != i) lfd->f->lock_table[prev].next_lock = i;
+	lfd->f->lock_table[i] = *lck;
+	return i;
+}
 
-				//verifier s'ils sont les seul owner
-					//verifier le debut du pose de lock
-					//liberer les verrous
-			}
+/*
+ *   Cette function supprime un lock
+ *   @param lock: Le lock à supprimer
+ *   @param rl_descriptor: Le pointeur vers le descripteur auquel il faut supprimer le lock
+ */
+ 
+static void delete_lock(rl_descriptor *des, int lock)
+{
+    if (des->f->first != lock){
+        int i = des->f->first;
+        while (i != -1){
+            if (des->f->lock_table[i].next_lock == lock){
+                des->f->lock_table[i].next_lock = des->f->lock_table[lock].next_lock;
+                break;
+            }
+            i = des->f->lock_table[i].next_lock;
+        }
+    }else{
+        if (des->f->lock_table[lock].next_lock != -1){           
+            des->f->first = des->f->lock_table[lock].next_lock;
+        }else{// SI PAS DE NEXT LOCK
+            des->f->first = -2;
+        }
+    }
+    des->f->lock_table[lock].next_lock = -2;
+}
+
+/*
+ *@param start: Nouveau début du lock
+ *@param end: Nouveau fin du lock
+ *@param rl_lock : rl_lock à dupliquer à la nouvelle position
+ * Cette fonction permet de transformer un rl_lock avec ses nouvelles coordonnées
+	[##### 0 - 100 ######]
+	   [### 10 - 80 ###]
+ */
+void changeLockPosition(int start, int end, rl_descriptor *lfd, rl_lock * copy)
+{
+	rl_lock new_r_lock = {
+		.next_lock = copy->next_lock, 
+		.type = copy->type, 
+		.nb_owners = copy->nb_owners, 
+		.starting_offset = start, 
+		.len = end};
+	for (size_t i = 0; i < copy->nb_owners; i++)
+	{
+		owner copyowner = {
+			.des = copy->lock_owners[i].des,
+			.proc = copy->lock_owners[i].proc};
+		new_r_lock.lock_owners[i] = copyowner;
+	}
+	add_lock(lfd, &new_r_lock);
+}
+
+int rl_fcntl_unlock_all(rl_descriptor *lfd, struct flock *lck)
+{
+	int debut_verrou = lck->l_start;
+	int fin_verrou = lck->l_start + lck->l_len;
+
+	int i = lfd->f->first;
+	while (i != -2 && i != -1)
+	{
+		rl_lock * lock_courant = &lfd->f->lock_table[i];		
+		int debut_courant_verrou = lock_courant->starting_offset;
+		int fin_courant_verrou = lock_courant->starting_offset + lock_courant->len;
+
+		if (debut_verrou > debut_courant_verrou && fin_courant_verrou > fin_verrou)
+		{
+			// Cas particulier: si le unlock verrou est en plein milieu d'un verrou
+			//  [### VEROU ####]
+			//         [######### SUPRESSION VEROU ############]
+			changeLockPosition(debut_courant_verrou, debut_verrou, lfd, lock_courant);
 		}
-	}else{ // Cas particulier
-		//4 cas part:
-			//cas 1 : 
-			
+		// Car classique: debut_courant_verrou > debut_verrou
+		//           [#### VERROU ####] [### VERROU 2 ####] etc..
+		//  [############## SUPPRESSION VERROU ###########################]
+		delete_lock(lfd, i);
+		if (lock_courant->next_lock == -1)break;
+		i = lfd->f->lock_table[i].next_lock;
 	}
 	return EXIT_SUCCESS;
 }
 
+int rl_fcntl_unlock_pos(rl_descriptor *lfd, struct flock *lck)
+{
+	int debut_verrou = lck->l_start;
+	int fin_verrou = lck->l_start + lck->l_len;
 
+	int i = lfd->f->first;
+	while (i != -2 && i != -1)
+	{
+			rl_lock * lock_courant = &lfd->f->lock_table[i];
 
-int rl_fcntl_wlock(rl_descriptor * lfd, struct flock *lck){
+			int debut_courant_verrou = lock_courant->starting_offset;
+			int fin_courant_verrou = lock_courant->starting_offset + lock_courant->len;
+			if(debut_courant_verrou == debut_verrou && fin_courant_verrou == fin_verrou){
+				delete_lock(lfd, i);
+				break;
+			}else if (debut_verrou >= debut_courant_verrou && fin_verrou >= fin_courant_verrou){
+				//printf("Cas 1 de pos\n");
+				// [### VEROU ####]
+				//        [######### SUPRESSION VEROU ############]
+				changeLockPosition(debut_courant_verrou, debut_verrou, lfd, lock_courant);
+			}
+			else if (debut_verrou <= debut_courant_verrou && fin_courant_verrou >= fin_verrou){
+				//printf("Cas 2 de pos\n");
+				// 						  [### VEROU ####]
+				//        [## SUPRESSION VEROU ##]
+				changeLockPosition(fin_verrou, fin_courant_verrou, lfd, lock_courant);
+			}
+			else if (debut_verrou >= debut_courant_verrou && fin_courant_verrou >= fin_verrou){
+				//printf("Cas 3 de pos\n");
+				// 		[###### VEROU #######]
+				//             [SVEROU]
+				changeLockPosition(debut_courant_verrou, debut_verrou, lfd, lock_courant);
+				changeLockPosition(fin_verrou, fin_courant_verrou, lfd, lock_courant);
+			}
+			// Car classique: debut_courant_verrou > debut_verrou && fin_verrou > fin_courant_verrou
+			//           [#### VERROU ####]
+			//       [######deleteLock########]
+			//printf("Situtation classique : delete lock\n");
+			delete_lock(lfd, i);
+		if (lock_courant->next_lock == -1)break;
+		i = lfd->f->lock_table[i].next_lock;
+	}
+	return EXIT_SUCCESS;
+}
+
+int rl_fcntl_unlock(rl_descriptor *lfd, struct flock *lck)
+{
+	if (lck->l_len == 0)return rl_fcntl_unlock_all(lfd, lck); // Cas retirer tous les verrous
+	else return rl_fcntl_unlock_pos(lfd, lck); // Cas particulier
+	return EXIT_SUCCESS;
+}
+
+static bool lock_overlap(rl_lock lck1, rl_lock lck2)
+{
+	return (lck1.starting_offset < lck2.starting_offset && (lck1.starting_offset + lck1.len > lck2.starting_offset)) || (lck2.starting_offset < lck1.starting_offset && (lck2.starting_offset + lck2.len > lck1.starting_offset)) || (lck1.starting_offset == lck2.starting_offset);
+}
+
+/*
+Si le courant est seul propriétaire :
+	cas 1 : on pose le verrou écriture au début
+
+			[#### LOCK READ #####]
+		[WRITE]
+			->  [WRITE][#### LOCK READ ####]
+
+	cas 2 : on pose le verrou écriture au milieu
+
+		[#### LOCK READ #####]
+				[WRITE]
+		cas particulier il faut separer LOCKREAD en deux
+			-> [### LR][WRITE][LR ####]
+
+	cas 3 : on pose verrou en écriture à la fin
+		[#### LOCK READ #####]
+						[WRITE]
+			-> [#### LOCK READ #####][WRITE]
+	cas 4 : on pose verrou en écriture sur tout le verrou
+				[#### LOCK READ #####]
+		[############### WRITE ##############]
+
+			-> [############### WRITE ##############]
+	cas 5 : on pose verrou en écriture sur un verrou écriture
+			#### LOCK WRITE ####]
+		[### WRITE ###]
+			-> [### WRITE ###############]
+
+	cas 6 : [#### WRITE ####] dans une zone libre
+
+sinon refuser le verrou
+*/
+/* int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
+
+	 rl_open_file *file = lfd->f;
+
+	phtread_mutex_lock(&file->mutex);
+	while (file->busy) {
+		pthread_cond_wait(&file->cond, &file->mutex);
+	}
+	file->busy = true;
+
+	int start = lck->l_start;
+	int end = lck->l_start + lck->l_len;
+
+	for (int i = 0 ; i < NB_LOCKS ; i++) {
+
+	} 
+}*/
+
+int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck)
+{
+	(void)lfd;
+	(void)lck;
 	return 0;
 }
 
-int rl_fcntl_rlock(rl_descriptor * lfd, struct flock *lck){
+static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck)
+{
+
+	rl_lock new_lock = {
+		.next_lock = -1,
+		.starting_offset = lck->l_start,
+		.len = lck->l_len,
+		.type = lck->l_type,
+		.nb_owners = 1};
+
+	new_lock.lock_owners[0] = (owner){
+		.proc = getpid(),
+		.des = lfd->d};
+
+	rl_open_file *file = lfd->f;
+
+	pthread_mutex_lock(&file->mutex);
+	while (file->busy)
+	{
+		pthread_cond_wait(&file->cond, &file->mutex);
+	}
+	file->busy = true;
+
+	if (file->first == -2)
+	{
+		file->lock_table[0] = new_lock;
+		file->first = 0;
+		return 0;
+	}
+
+	rl_lock *curr_lock = &file->lock_table[file->first];
+	while (curr_lock->next_lock >= 0)
+	{
+
+		// if the new lock overlaps a WRITE lock -> error
+		if (lock_overlap(new_lock, *curr_lock) && curr_lock->type == F_WRLCK)
+		{
+			errno = EAGAIN;
+			return -1;
+		}
+
+		curr_lock = &file->lock_table[curr_lock->next_lock];
+	}
+
+	// serach for first available space
+	int i = 0;
+	while (file->lock_table[i].next_lock != -2 && i < NB_LOCKS)
+	{
+		i++;
+	}
+
+	file->lock_table[i] = new_lock;
+	curr_lock->next_lock = i;
+
+	// TODO merge all locks overlapping if possible
+
+	file->busy = false;
+	pthread_mutex_unlock(&file->mutex);
+	pthread_cond_signal(&file->cond);
+
 	return 0;
 }
 
 // ## RL_FTNCL
 int rl_fcntl(rl_descriptor lfd, int cmd, struct flock *lck)
 {
-    switch (lck->l_whence)
-    {
-    	case SEEK_SET:
-        	break;
-    	case SEEK_CUR:
-        	lck->l_whence = SEEK_SET;
-        	if ((lck->l_start = lseek(lfd.d, 0, SEEK_CUR)) == -1)
-				PANIC_EXIT("LSEEK");
-        	break;
-    	case SEEK_END:
-        	lck->l_whence = SEEK_SET;
-        	if ((lck->l_start = lseek(lfd.d, 0, SEEK_END)) == -1)
-            	PANIC_EXIT("LSEEK");
-       		break;
-    }
-    switch (cmd)
-    {
-    case F_SETLK:
-        if (lck->l_type == F_UNLCK) return rl_fcntl_unlock(&lfd, lck);
-        else if (lck->l_type == F_WRLCK)return rl_fcntl_wlock(&lfd, lck);
-        else if (lck->l_type == F_RDLCK)return rl_fcntl_rlock(&lfd, lck);
-        break;
-    case F_SETLKW:
-        break;
-    case F_GETLK:
-        break;
-    default:
-        errno = EAGAIN;
-        return EXIT_FAILURE;
-    }
-    return EXIT_SUCCESS;
+	switch (lck->l_whence)
+	{
+
+	case SEEK_SET:
+		break;
+	case SEEK_CUR:
+		lck->l_whence = SEEK_SET;
+		if ((lck->l_start = lseek(lfd.d, 0, SEEK_CUR)) == -1)
+			PANIC_EXIT("LSEEK");
+		break;
+	case SEEK_END:
+		lck->l_whence = SEEK_SET;
+		if ((lck->l_start = lseek(lfd.d, 0, SEEK_END)) == -1)
+			PANIC_EXIT("LSEEK");
+		break;
+	}
+
+	switch (cmd)
+	{
+
+	case F_SETLK:
+		if (lck->l_type == F_UNLCK)
+		{
+
+			return rl_fcntl_unlock(&lfd, lck);
+		}
+		else if (lck->l_type == F_WRLCK)
+		{
+
+			return rl_fcntl_wlock(&lfd, lck);
+		}
+		else if (lck->l_type == F_RDLCK)
+		{
+
+			return rl_fcntl_rlock(&lfd, lck);
+		}
+		break;
+	case F_SETLKW:
+		break;
+	default:
+		errno = EAGAIN;
+		return EXIT_FAILURE;
+	}
+	return EXIT_SUCCESS;
+}
+
+void rl_debug()
+{
+
+	for (int i = 0; i < all_files.nb_files; i++)
+	{
+
+		rl_open_file *file = all_files.tab_open_files[i];
+
+		if(file->first == -2) {
+			puts("No locks on file");
+			return;
+		}
+
+		printf("=============\nFile n°%d\n=============\n", i);
+
+		rl_lock *curr_lock = &file->lock_table[file->first];
+		do {
+
+			printf("%s lock (%ld to %ld)\n\tOwners:\n", curr_lock->type == F_WRLCK ? "WRITE" : "READ", curr_lock->starting_offset, curr_lock->len);
+
+			for (size_t j = 0; j < curr_lock->nb_owners; j++) {
+
+				printf("\t\t%d, %d\n", curr_lock->lock_owners[j].des, curr_lock->lock_owners[j].proc);
+			}
+
+			if (curr_lock->next_lock == -1) {
+				break;
+			}
+
+			curr_lock = &file->lock_table[curr_lock->next_lock];
+		} while (curr_lock->next_lock >= -1);
+	}
 }
