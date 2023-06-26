@@ -473,6 +473,8 @@ rl_descriptor rl_open(const char *path, int oflag, ...)
 	all_files.nb_files++;
 
 	return desc;
+		pthread_mutex_unlock(&file->mutex);
+		pthread_cond_signal(&file->cond);
 }
 
 /* Fonction auxilliere */
@@ -536,14 +538,14 @@ static void delete_lock(rl_descriptor *des, int lock)
 	[##### 0 - 100 ######]
 	   [### 10 - 80 ###]
  */
-void changeLockPosition(int start, int end, rl_descriptor *lfd, rl_lock * copy)
-{
+void changeLockPosition(int start, int end, rl_descriptor *lfd, rl_lock * copy) {
 	rl_lock new_r_lock = {
 		.next_lock = copy->next_lock, 
 		.type = copy->type, 
 		.nb_owners = copy->nb_owners, 
 		.starting_offset = start, 
-		.len = end};
+		.len = end - start
+		};
 	for (size_t i = 0; i < copy->nb_owners; i++)
 	{
 		owner copyowner = {
@@ -595,107 +597,221 @@ int rl_fcntl_unlock_pos(rl_descriptor *lfd, struct flock *lck)
 
 			int debut_courant_verrou = lock_courant->starting_offset;
 			int fin_courant_verrou = lock_courant->starting_offset + lock_courant->len;
+
+//			printf("debut courant %d, fin courant %d, debug verrou %d, fin verrou %d\n", debut_courant_verrou, fin_courant_verrou, debut_verrou, fin_verrou);
 			if(debut_courant_verrou == debut_verrou && fin_courant_verrou == fin_verrou){
+//				printf("Cas pile poile\n");
 				delete_lock(lfd, i);
-				break;
-			}else if (debut_verrou >= debut_courant_verrou && fin_verrou >= fin_courant_verrou){
-				//printf("Cas 1 de pos\n");
-				// [### VEROU ####]
-				//        [######### SUPRESSION VEROU ############]
+			}else if (debut_verrou >= debut_courant_verrou && debut_verrou < fin_courant_verrou && fin_courant_verrou < fin_verrou){
+	//			printf("Cas 1 de pos\n");
+				// [#### VEROU ####]
+				//            [######### SUPRESSION VEROU ############]
 				changeLockPosition(debut_courant_verrou, debut_verrou, lfd, lock_courant);
+				delete_lock(lfd, i);
 			}
-			else if (debut_verrou <= debut_courant_verrou && fin_courant_verrou >= fin_verrou){
-				//printf("Cas 2 de pos\n");
+			else if (debut_verrou <= debut_courant_verrou && fin_courant_verrou >= fin_verrou && fin_verrou > debut_courant_verrou){
+	//			printf("Cas 2 de pos\n");
 				// 						  [### VEROU ####]
 				//        [## SUPRESSION VEROU ##]
 				changeLockPosition(fin_verrou, fin_courant_verrou, lfd, lock_courant);
+				delete_lock(lfd, i);
 			}
 			else if (debut_verrou >= debut_courant_verrou && fin_courant_verrou >= fin_verrou){
-				//printf("Cas 3 de pos\n");
+	//			printf("Cas 3 de pos\n");
 				// 		[###### VEROU #######]
 				//             [SVEROU]
 				changeLockPosition(debut_courant_verrou, debut_verrou, lfd, lock_courant);
 				changeLockPosition(fin_verrou, fin_courant_verrou, lfd, lock_courant);
+				delete_lock(lfd, i);
 			}
+			
 			// Car classique: debut_courant_verrou > debut_verrou && fin_verrou > fin_courant_verrou
 			//           [#### VERROU ####]
 			//       [######deleteLock########]
 			//printf("Situtation classique : delete lock\n");
-			delete_lock(lfd, i);
 		if (lock_courant->next_lock == -1)break;
 		i = lfd->f->lock_table[i].next_lock;
 	}
 	return EXIT_SUCCESS;
 }
 
-int rl_fcntl_unlock(rl_descriptor *lfd, struct flock *lck)
-{
-	if (lck->l_len == 0)return rl_fcntl_unlock_all(lfd, lck); // Cas retirer tous les verrous
-	else return rl_fcntl_unlock_pos(lfd, lck); // Cas particulier
+/**
+ * @brief Permet de retirer un verrou
+*/
+int rl_fcntl_unlock(rl_descriptor *lfd, struct flock *lck) {
+	printf("Fonction unlock\n");
+	if (lck->l_len == 0) {
+		return rl_fcntl_unlock_all(lfd, lck); // Cas retirer tous les verrous
+	} else {
+		return rl_fcntl_unlock_pos(lfd, lck); // Cas particulier
+	}
+	printf("sortie Fonction unlock\n");
 	return EXIT_SUCCESS;
 }
 
-static bool lock_overlap(rl_lock lck1, rl_lock lck2)
-{
-	return (lck1.starting_offset < lck2.starting_offset && (lck1.starting_offset + lck1.len > lck2.starting_offset)) || (lck2.starting_offset < lck1.starting_offset && (lck2.starting_offset + lck2.len > lck1.starting_offset)) || (lck1.starting_offset == lck2.starting_offset);
+/**
+ * @brief Permet de s'assurer que deux verrous ne se chevauchent pas
+ * @return true si les deux verrous se chevauchent, false sinon
+ * @param lck1 le premier verrou
+ * @param lck2 le deuxième verrou
+*/
+static bool lock_overlap(rl_lock lck1, rl_lock lck2) {
+	return (lck1.starting_offset < lck2.starting_offset && (lck1.starting_offset + lck1.len > lck2.starting_offset)) 
+	|| (lck2.starting_offset < lck1.starting_offset && (lck2.starting_offset + lck2.len > lck1.starting_offset)) 
+	|| (lck1.starting_offset == lck2.starting_offset);
 }
 
-/*
-Si le courant est seul propriétaire :
-	cas 1 : on pose le verrou écriture au début
-
-			[#### LOCK READ #####]
-		[WRITE]
-			->  [WRITE][#### LOCK READ ####]
-
-	cas 2 : on pose le verrou écriture au milieu
-
-		[#### LOCK READ #####]
-				[WRITE]
-		cas particulier il faut separer LOCKREAD en deux
-			-> [### LR][WRITE][LR ####]
-
-	cas 3 : on pose verrou en écriture à la fin
-		[#### LOCK READ #####]
-						[WRITE]
-			-> [#### LOCK READ #####][WRITE]
-	cas 4 : on pose verrou en écriture sur tout le verrou
-				[#### LOCK READ #####]
-		[############### WRITE ##############]
-
-			-> [############### WRITE ##############]
-	cas 5 : on pose verrou en écriture sur un verrou écriture
-			#### LOCK WRITE ####]
-		[### WRITE ###]
-			-> [### WRITE ###############]
-
-	cas 6 : [#### WRITE ####] dans une zone libre
-
-sinon refuser le verrou
+/**
+ * @brief Permet de fusionner deux verrous en s'assurant que les contraintes sont respectées
+ * @param lock1 le premier verrou
+ * @param lock2 le deuxième verrou
 */
-/* int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
+static void merge_locks_aux(rl_lock *lock1, rl_lock *lock2) {
+	
+	size_t debut_lock_1 = lock1->starting_offset;
+	size_t fin_lock_1 = lock1->starting_offset + lock1->len;
+	
+	size_t debut_lock_2 = lock2->starting_offset;
+	size_t fin_lock_2 = lock2->starting_offset + lock2->len;
 
-	 rl_open_file *file = lfd->f;
+	// Cas classique fusion
+	// [LOCK 1]
+	//       [ LOCK 2]
+	//
+	if(fin_lock_1 >= debut_lock_2 && fin_lock_1 <= fin_lock_2){
+		if(lock1->nb_owners == 1 && lock2->nb_owners == 1){
+			lock1->len += (lock2->len) - (fin_lock_1 - debut_lock_2);
+			lock1->next_lock = lock2->next_lock;
+			lock2->next_lock = -2;
+		}
+	}else if(debut_lock_1 < fin_lock_2 && fin_lock_2 < fin_lock_1){
+	// Cas classique fusion
+	// 				[LOCK 1]
+	//       [ LOCK 2]
+	//
+		if(lock1->nb_owners == 1 && lock2->nb_owners == 1){
+			lock1->starting_offset = lock2->starting_offset;
+			lock1->len += (lock2->len) - (fin_lock_2 - debut_lock_1);
+			lock1->next_lock = lock2->next_lock;
+			lock2->next_lock = -2;
+		}
+	}
+}
 
-	phtread_mutex_lock(&file->mutex);
-	while (file->busy) {
+/**
+ * @brief permet de fusionner les verrous qui se chevauchent et dont le type est compatible
+ * @param lfd le descripteur de fichier
+ * @return 0 si tout s'est bien passé, -1 sinon
+*/
+static int merge_locks(rl_descriptor *lfd) {
+
+	rl_open_file *file = lfd->f;
+
+	rl_lock *lock1 = &file->lock_table[file->first];
+
+	if(file->first == -2) {
+		return 0;
+	}
+
+	do {
+
+		rl_lock *lock2 = &file->lock_table[lock1->next_lock];
+			
+		if(lock_overlap(*lock1, *lock2)) {
+			puts("overlap");
+			merge_locks_aux(lock1, lock2);
+		}
+
+		lock1 = &file->lock_table[lock1->next_lock];
+	} while(lock1->next_lock >= 0);
+
+	return 0;
+}
+
+
+static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
+
+	//Tout parcourir
+		//Pour chaque bloque rencontrer:
+		//si (ça !overlap){ 
+			
+			//Si c'est un rl_lock WRITE{
+				//si y'a une seul proprio
+				// Ajout mon verrou
+			//}
+			//else SI c'est un rl_lock READ {
+				//si y'a une seul proprio
+					// Supprime le verrou read
+					//ajout mon verrou Write
+			//}
+		//else -> reject
+	
+	rl_lock new_lock = {
+		.next_lock = -1,
+		.starting_offset = lck->l_start,
+		.len = lck->l_len,
+		.type = lck->l_type,
+		.nb_owners = 1};
+
+	new_lock.lock_owners[0] = (owner){
+		.proc = getpid(),
+		.des = lfd->d};
+
+	rl_open_file *file = lfd->f;
+
+	pthread_mutex_lock(&file->mutex);
+	while (file->busy)
+	{
 		pthread_cond_wait(&file->cond, &file->mutex);
 	}
 	file->busy = true;
 
-	int start = lck->l_start;
-	int end = lck->l_start + lck->l_len;
+	if (file->first == -2)
+	{
+		file->lock_table[0] = new_lock;
+		file->first = 0;
 
-	for (int i = 0 ; i < NB_LOCKS ; i++) {
+		file->busy = false;
+		pthread_mutex_unlock(&file->mutex);
+		pthread_cond_signal(&file->cond);
 
-	} 
-}*/
+		return 0;
+	}
 
-int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck)
-{
-	(void)lfd;
-	(void)lck;
-	return 0;
+	rl_lock *curr_lock = &file->lock_table[file->first];
+	int i_ = file->first;
+	while (curr_lock->next_lock >= 0) {
+			if (lock_overlap(*curr_lock, new_lock)) {
+				if (curr_lock->nb_owners == 1) {
+					if (curr_lock->type == F_RDLCK) {
+							delete_lock(lfd, i_);
+							pthread_mutex_unlock(&file->mutex);
+							pthread_cond_signal(&file->cond);
+					}
+				} else { // S'il ya plusieurs propriétaire nb_owners
+
+				}
+			}
+			i_ = curr_lock->next_lock;
+			curr_lock = &file->lock_table[curr_lock->next_lock];
+		}
+
+		// serach for first available space
+			int i = 0;
+			while (file->lock_table[i].next_lock != -2 && i < NB_LOCKS)
+				i++;
+			
+
+			file->lock_table[i] = new_lock;
+			curr_lock->next_lock = i;
+
+			merge_locks(lfd);
+
+			file->busy = false;
+			pthread_mutex_unlock(&file->mutex);
+			pthread_cond_signal(&file->cond);
+
+		return EXIT_SUCCESS;
 }
 
 static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck)
@@ -725,6 +841,11 @@ static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck)
 	{
 		file->lock_table[0] = new_lock;
 		file->first = 0;
+
+		file->busy = false;
+		pthread_mutex_unlock(&file->mutex);
+		pthread_cond_signal(&file->cond);
+
 		return 0;
 	}
 
@@ -736,6 +857,9 @@ static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck)
 		if (lock_overlap(new_lock, *curr_lock) && curr_lock->type == F_WRLCK)
 		{
 			errno = EAGAIN;
+			file->busy = false;
+			pthread_mutex_unlock(&file->mutex);
+			pthread_cond_signal(&file->cond);
 			return -1;
 		}
 
@@ -752,7 +876,7 @@ static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck)
 	file->lock_table[i] = new_lock;
 	curr_lock->next_lock = i;
 
-	// TODO merge all locks overlapping if possible
+	merge_locks(lfd);
 
 	file->busy = false;
 	pthread_mutex_unlock(&file->mutex);
@@ -828,7 +952,7 @@ void rl_debug()
 		rl_lock *curr_lock = &file->lock_table[file->first];
 		do {
 
-			printf("%s lock (%ld to %ld)\n\tOwners:\n", curr_lock->type == F_WRLCK ? "WRITE" : "READ", curr_lock->starting_offset, curr_lock->len);
+			printf("%s lock (%ld to %ld)\n\tOwners:\n", curr_lock->type == F_WRLCK ? "WRITE" : "READ", curr_lock->starting_offset, curr_lock->starting_offset + curr_lock->len);
 
 			for (size_t j = 0; j < curr_lock->nb_owners; j++) {
 
