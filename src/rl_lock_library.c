@@ -86,7 +86,7 @@ static int smo_format_name(int fd, char *dest) {
 	// numéro d'inode
 	ino_t ino = st.st_ino;
 
-	ret = sprintf(dest, "f_%ld_%ld", dev, ino);
+	ret = sprintf(dest, "/f_%ld_%ld", dev, ino);
 	if (ret < 0) {
 
 		return -1;
@@ -294,6 +294,7 @@ pid_t rl_fork() {
 }
 
 int rl_close(rl_descriptor lfd) {
+	printf("[ENTREE] rl_close\n");
     rl_open_file *file = lfd.f;
     owner lfd_owner = {.proc = getpid(), .des = lfd.d};
 
@@ -321,7 +322,8 @@ int rl_close(rl_descriptor lfd) {
 						// on supprime le verrou de la liste
 						rl_lock *next_lock = &file->lock_table[lock->next_lock];
 						lock->next_lock = next_lock->next_lock;
-						next_lock->next_lock = -1;
+						next_lock->next_lock = -2;
+						file->open_files_count--;
 					}
 					else {
 						// on supprime le verrou de la liste
@@ -332,6 +334,14 @@ int rl_close(rl_descriptor lfd) {
             }
         }
     }
+
+	// on supprime le smo si plus aucun processus n'utilise le fichier
+	if (file->open_files_count <= 0) {
+		char name[256];
+		smo_format_name(lfd.d, name);
+		printf("shm_unlink %s\n", name);
+		shm_unlink(name);
+	}
 
     file->busy = false;
     pthread_mutex_unlock(&file->mutex);
@@ -390,6 +400,8 @@ rl_descriptor rl_open(const char *path, int oflag, ...) {
 	if (file == MAP_FAILED) {
 		return desc;
 	}
+
+	file->open_files_count++;
 
 	ret = close(smo_fd);
 
@@ -666,23 +678,17 @@ static int merge_locks(rl_descriptor *lfd) {
 	return 0;
 }
 
-
+/**
+ * @brief Permet de poser un verrou en écriture en s'assurant que les contraintes sont respectées
+ * On parcourt tous les blocs, pour chaque bloc rencontré, si les blocs se chevauchent et que le bloc chevauché est 
+ * un verrou en écriture et qu'il n'y a qu'un seul propriétaire, on ajoute le verrou,
+ * sinon si le bloc chevauché est un verrou en lecture et qu'il n'y a qu'un seul propriétaire, 
+ * on supprime le verrou en lecture et on ajoute le verrou en écriture, sinon on rejette la demande
+ * @param lfd le descripteur de fichier
+ * @param lck le verrou à poser
+ * @return 0 si tout s'est bien passé, -1 sinon
+*/
 static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
-
-	//Tout parcourir
-		//Pour chaque bloque rencontrer:
-		//si (ça !overlap){ 
-			
-			//Si c'est un rl_lock WRITE{
-				//si y'a une seul proprio
-				// Ajout mon verrou
-			//}
-			//else SI c'est un rl_lock READ {
-				//si y'a une seul proprio
-					// Supprime le verrou read
-					//ajout mon verrou Write
-			//}
-		//else -> reject
 	
 	rl_lock new_lock = {
 		.next_lock = -1,
@@ -787,6 +793,7 @@ static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck) {
 
 		// if the new lock overlaps a WRITE lock -> error
 		if (lock_overlap(new_lock, *curr_lock) && curr_lock->type == F_WRLCK) {
+			printf("chevauchement avec un verrou en écriture, posée d'un verrou en lecture impossible\n");
 			errno = EAGAIN;
 			file->busy = false;
 			pthread_mutex_unlock(&file->mutex);

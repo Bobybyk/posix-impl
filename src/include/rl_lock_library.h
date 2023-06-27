@@ -38,6 +38,7 @@ typedef struct{
 
 typedef struct{
 	int first;
+	int open_files_count;
 	rl_lock lock_table[NB_LOCKS];
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
