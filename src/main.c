@@ -5,7 +5,7 @@
 
 int main(void) {
 
-	/* rl_descriptor desc = rl_open("test", O_RDONLY | O_CREAT, 0644);
+	rl_descriptor desc = rl_open("test", O_RDONLY | O_CREAT, 0644);
 	if(desc.d < 0 || desc.f == NULL) {
 		perror("rl_open");
 		return EXIT_FAILURE;
@@ -23,6 +23,7 @@ int main(void) {
 		perror("rl_fcntl");
 		return EXIT_FAILURE;
 	}
+
 	puts("verrou posé");
 	rl_debug();
 
@@ -54,7 +55,7 @@ int main(void) {
 		return EXIT_FAILURE;
 	}
 	puts("verrou posé");
-	rl_debug();
+	rl_debug(); 
 
 	lock.l_start = 40;
 	lock.l_len = 5;
@@ -67,9 +68,17 @@ int main(void) {
 	puts("verrou posé");
 	rl_debug();
 	
-	rl_close(desc); */
+	lock.l_start = 0;
+	lock.l_len = 100;
+	ret = rl_fcntl(desc, F_SETLK, &lock);
+	if(ret < 0) {
+		perror("rl_fcntl");
+		return EXIT_FAILURE;
+	}
+	puts("verrou posé");
+	rl_debug();
 
-	rl_descriptor desc = rl_open("test", O_RDONLY | O_CREAT, 0644);
+	/* rl_descriptor desc = rl_open("test", O_RDONLY | O_CREAT, 0644);
 	if(desc.d < 0 || desc.f == NULL) {
 		perror("rl_open");
 		return EXIT_FAILURE;
@@ -137,7 +146,7 @@ int main(void) {
 	puts("verrou posé");
 	rl_debug();
 
-	rl_close(desc);
+	rl_close(desc); */
 
 	return EXIT_SUCCESS;
 }

@@ -268,11 +268,16 @@ pid_t rl_fork() {
 	for (int i = 0; i < all_files.nb_files; i++) {
 
 		rl_open_file *file = all_files.tab_open_files[i];
+		pthread_mutex_lock(&file->mutex);
+		while(file->busy) {
+			pthread_cond_wait(&file->cond, &file->mutex);
+		}
+		file->busy = true;
 
 		rl_lock *curr = &file->lock_table[file->first];
 
 		// for all locks
-		while (curr->next_lock >= 0) {
+		do {
 
 			// for all owners
 			for (size_t i = 0; i < curr->nb_owners; i++) {
@@ -287,7 +292,11 @@ pid_t rl_fork() {
 			}
 
 			curr = &file->lock_table[curr->next_lock];
-		}
+		} while (curr->next_lock >= 0);
+
+		file->busy = false;
+		pthread_mutex_unlock(&file->mutex);
+		pthread_cond_signal(&file->cond);
 	}
 
 	return 0;
@@ -327,7 +336,7 @@ int rl_close(rl_descriptor lfd) {
 					}
 					else {
 						// on supprime le verrou de la liste
-						file->first = -1;
+						file->first = -2;
 					}
 				}
                 break;

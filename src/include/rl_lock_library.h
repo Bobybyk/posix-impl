@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 
 #include "panic.h"
 
