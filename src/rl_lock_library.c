@@ -706,72 +706,105 @@ static int merge_locks(rl_descriptor *lfd) {
  * @return 0 si tout s'est bien passé, -1 sinon
 */
 static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
-	
-	rl_lock new_lock = {
-		.next_lock = -1,
-		.starting_offset = lck->l_start,
-		.len = lck->l_len,
-		.type = lck->l_type,
-		.nb_owners = 1};
+    rl_lock new_lock = {
+        .next_lock = -1,
+        .starting_offset = lck->l_start,
+        .len = lck->l_len,
+        .type = lck->l_type,
+        .nb_owners = 1
+    };
 
-	new_lock.lock_owners[0] = (owner){
-		.proc = getpid(),
-		.des = lfd->d};
+    new_lock.lock_owners[0] = (owner) {
+        .proc = getpid(),
+        .des = lfd->d
+    };
 
-	rl_open_file *file = lfd->f;
+    rl_open_file *file = lfd->f;
 
-	pthread_mutex_lock(&file->mutex);
-	while (file->busy) {
-		pthread_cond_wait(&file->cond, &file->mutex);
-	}
-	file->busy = true;
+    pthread_mutex_lock(&file->mutex);
+    while (file->busy) {
+        pthread_cond_wait(&file->cond, &file->mutex);
+    }
+    file->busy = true;
 
-	if (file->first == -2) {
-		file->lock_table[0] = new_lock;
-		file->first = 0;
-
+    if (file->first == -2) {
+        file->lock_table[0] = new_lock;
+        file->first = 0;
+		
 		file->busy = false;
 		pthread_mutex_unlock(&file->mutex);
 		pthread_cond_signal(&file->cond);
+        return 0;
+    }
 
-		return 0;
-	}
+    int prev_lock_index = -1;
+    int curr_lock_index = file->first;
 
-	rl_lock *curr_lock = &file->lock_table[file->first];
-	int i_ = file->first;
-	while (curr_lock->next_lock >= 0) {
-			if (lock_overlap(*curr_lock, new_lock)) {
-				if (curr_lock->nb_owners == 1) {
-					if (curr_lock->type == F_RDLCK) {
-							delete_lock(lfd, i_);
-							pthread_mutex_unlock(&file->mutex);
-							pthread_cond_signal(&file->cond);
-					}
-				} else { // S'il ya plusieurs propriétaire nb_owners
+    while (curr_lock_index >= 0) {
+        rl_lock *curr_lock = &file->lock_table[curr_lock_index];
 
-				}
-			}
-			i_ = curr_lock->next_lock;
-			curr_lock = &file->lock_table[curr_lock->next_lock];
-		}
+        if (curr_lock->starting_offset > new_lock.starting_offset) {
+            break;
+        }
 
-		// serach for first available space
-			int i = 0;
-			while (file->lock_table[i].next_lock != -2 && i < NB_LOCKS)
-				i++;
-			
+        if (curr_lock->starting_offset + curr_lock->len > new_lock.starting_offset) {
+            if (curr_lock->type == F_WRLCK && curr_lock->nb_owners == 1) {
+                // Remove existing write lock and add the new write lock
+                if (prev_lock_index >= 0) {
+                    file->lock_table[prev_lock_index].next_lock = curr_lock->next_lock;
+                } else {
+                    file->first = curr_lock->next_lock;
+                }
 
-			file->lock_table[i] = new_lock;
-			curr_lock->next_lock = i;
+                new_lock.next_lock = curr_lock->next_lock;
+                file->lock_table[curr_lock_index] = new_lock;
 
-			merge_locks(lfd);
+				file->busy = false;
+                pthread_mutex_unlock(&file->mutex);
+				pthread_cond_signal(&file->cond);
+                return 0;
+            } else if (curr_lock->type == F_RDLCK && curr_lock->nb_owners == 1) {
+                // Remove existing read lock and add the new write lock
+                if (prev_lock_index >= 0) {
+                    file->lock_table[prev_lock_index].next_lock = curr_lock->next_lock;
+                } else {
+                    file->first = curr_lock->next_lock;
+                }
 
-			file->busy = false;
-			pthread_mutex_unlock(&file->mutex);
-			pthread_cond_signal(&file->cond);
+                new_lock.next_lock = curr_lock->next_lock;
+                file->lock_table[curr_lock_index] = new_lock;
 
-		return EXIT_SUCCESS;
+				file->busy = false;
+                pthread_mutex_unlock(&file->mutex);
+				pthread_cond_signal(&file->cond);
+                return 0;
+            } else {
+				file->busy = false;
+                pthread_mutex_unlock(&file->mutex);
+				pthread_cond_signal(&file->cond);
+                return -1;  // Reject the request if the lock cannot be acquired
+            }
+        }
+
+        prev_lock_index = curr_lock_index;
+        curr_lock_index = curr_lock->next_lock;
+    }
+
+    // Add the new lock at the end of the table
+    int new_lock_index = 0;
+    while (file->lock_table[new_lock_index].next_lock >= 0) {
+        new_lock_index = file->lock_table[new_lock_index].next_lock;
+    }
+    file->lock_table[new_lock_index].next_lock = new_lock_index + 1;
+    new_lock.next_lock = -1;
+    file->lock_table[new_lock_index + 1] = new_lock;
+
+	file->busy = false;
+	pthread_mutex_unlock(&file->mutex);
+	pthread_cond_signal(&file->cond);
+    return 0;
 }
+
 
 /**
  * @brief Permet de poser un verrou en lecture en s'assurant que les contraintes sont respectées
