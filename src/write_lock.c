@@ -81,8 +81,8 @@ int main(void) {
 
 	// WRITE
 
-	lock.l_start = 90;
-	lock.l_len = 50;
+	lock.l_start = 249;
+	lock.l_len = 60;
 	lock.l_type = F_WRLCK;
 	ret = rl_fcntl(desc, F_SETLK, &lock);
 	if(ret < 0 && errno == EAGAIN) {
