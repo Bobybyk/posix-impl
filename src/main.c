@@ -67,6 +67,7 @@ int main(void) {
 	puts("verrou posé");
 	rl_debug();
 	
+	rl_close(desc);
 
 	/* rl_descriptor desc = rl_open("test", O_RDONLY | O_CREAT, 0644);
 	if(desc.d < 0 || desc.f == NULL) {

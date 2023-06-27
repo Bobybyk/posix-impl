@@ -1,14 +1,14 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
- #include <stdbool.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include "rl_lock_library.h"
 
 
-/*nt main(int argc , char **argv){
+/* int main(int argc , char **argv){
 
   if(argc != 5){
     fprintf(stderr, "usage : %s file start len R|W \n"
@@ -61,5 +61,4 @@
     fprintf(stderr, "process %d release lock error\n", (int) getpid());
   }
   rl_close(d);
-}
-*/
+} */
