@@ -683,7 +683,7 @@ static int merge_locks(rl_descriptor *lfd) {
 
 	do {
 		rl_lock *lock2 = &file->lock_table[lock1->next_lock];
-			
+
 		if(lock_overlap(*lock1, *lock2)) {
 			//puts("overlap");
 			merge_locks_aux(lock1, lock2);
@@ -749,7 +749,8 @@ static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
 
         if (curr_lock->starting_offset + curr_lock->len > new_lock.starting_offset) {
             if (curr_lock->type == F_WRLCK && curr_lock->nb_owners == 1) {
-				printf("remove write lock\n");
+				/* printf("remove write lock\n");
+
                 // Remove existing write lock and add the new write lock
                 if (prev_lock_index >= 0) {
                     file->lock_table[prev_lock_index].next_lock = curr_lock->next_lock;
@@ -758,7 +759,7 @@ static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
                 }
 
                 new_lock.next_lock = curr_lock->next_lock;
-                file->lock_table[curr_lock_index] = new_lock;
+                file->lock_table[curr_lock_index] = new_lock; */
             } else if (curr_lock->type == F_RDLCK && curr_lock->nb_owners == 1) {
 				printf("remove read lock\n");
                 // Remove existing read lock and add the new write lock
@@ -771,7 +772,7 @@ static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
                 new_lock.next_lock = curr_lock->next_lock;
                 file->lock_table[curr_lock_index] = new_lock;
             } else {
-				printf("nop");
+				printf("nop\n");
 				file->busy = false;
                 pthread_mutex_unlock(&file->mutex);
 				pthread_cond_signal(&file->cond);
@@ -791,6 +792,8 @@ static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
     file->lock_table[new_lock_index].next_lock = new_lock_index + 1;
     new_lock.next_lock = -1;
     file->lock_table[new_lock_index + 1] = new_lock;
+
+	merge_locks(lfd);
 
 	file->busy = false;
 	pthread_mutex_unlock(&file->mutex);
