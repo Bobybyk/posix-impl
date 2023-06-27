@@ -1,26 +1,25 @@
-CFLAGS=-Wall -Wextra -Werror -g -std=gnu17 -Isrc/include
-LDFLAGS=-lrt -pthread
-
-SRC_DIR=src
+CC=gcc
+CFLAGS= -g -Wall -Wextra -Werror -I include/ 
 BUILD_DIR=build
 
-SRC=$(wildcard $(SRC_DIR)/*.c)
-OBJ=$(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
-PRGM=rl_lib_main
+all: library read_lock write_lock fork_read_lock test1
 
-.PHONY: 	all
+library: $(BUILD_DIR)/rl_lock_library.o
 
-all:	$(PRGM)
+read_lock: $(BUILD_DIR)/read_lock.o
+	$(CC) $(CFLAGS) -o $@ $^ $(BUILD_DIR)/rl_lock_library.o -lrt
 
-$(PRGM):	$(OBJ) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+write_lock: $(BUILD_DIR)/write_lock.o
+	$(CC) $(CFLAGS) -o $@ $^ $(BUILD_DIR)/rl_lock_library.o -lrt
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
+fork_read_lock: $(BUILD_DIR)/fork_read_lock.o
+	$(CC) $(CFLAGS) -o $@ $^ $(BUILD_DIR)/rl_lock_library.o -lrt
 
-$(BUILD_DIR):
-	@mkdir -p $@
+test1: $(BUILD_DIR)/test1.o
+	$(CC) $(CFLAGS) -o $@ $^ $(BUILD_DIR)/rl_lock_library.o -lrt
+
+$(BUILD_DIR)/%.o : src/%.c
+	$(CC) $(CFLAGS) -o $@ -c $<
 
 clean:
-	rm -rf build $(PRGM)
-
+	rm -rf library build/*.o read_lock write_lock fork_read_lock test1 fichier_verrous

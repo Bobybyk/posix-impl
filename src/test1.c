@@ -7,8 +7,7 @@
 #include <unistd.h>
 #include "rl_lock_library.h"
 
-
-/* int main(int argc , char **argv){
+int main(int argc , char **argv){
 
   if(argc != 5){
     fprintf(stderr, "usage : %s file start len R|W \n"
@@ -61,4 +60,4 @@
     fprintf(stderr, "process %d release lock error\n", (int) getpid());
   }
   rl_close(d);
-} */
+} 

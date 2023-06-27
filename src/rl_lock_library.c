@@ -303,7 +303,6 @@ pid_t rl_fork() {
 }
 
 int rl_close(rl_descriptor lfd) {
-	printf("[ENTREE] rl_close\n");
     rl_open_file *file = lfd.f;
     owner lfd_owner = {.proc = getpid(), .des = lfd.d};
 
@@ -363,7 +362,6 @@ int rl_close(rl_descriptor lfd) {
     }
 
     // Ferme le descripteur et retourne le résultat
-    printf("[SORTIE] rl_close\n");
     return close(lfd.d);
 }
 
@@ -598,13 +596,12 @@ int rl_fcntl_unlock_pos(rl_descriptor *lfd, struct flock *lck) {
  * @brief Permet de retirer un verrou
 */
 int rl_fcntl_unlock(rl_descriptor *lfd, struct flock *lck) {
-	printf("Fonction unlock\n");
+
 	if (lck->l_len == 0) {
 		return rl_fcntl_unlock_all(lfd, lck); // Cas retirer tous les verrous
 	} else {
 		return rl_fcntl_unlock_pos(lfd, lck); // Cas particulier
 	}
-	printf("sortie Fonction unlock\n");
 	return EXIT_SUCCESS;
 }
 
@@ -677,7 +674,7 @@ static int merge_locks(rl_descriptor *lfd) {
 		rl_lock *lock2 = &file->lock_table[lock1->next_lock];
 			
 		if(lock_overlap(*lock1, *lock2)) {
-			puts("overlap");
+			//puts("overlap");
 			merge_locks_aux(lock1, lock2);
 		}
 
@@ -853,11 +850,14 @@ int rl_fcntl(rl_descriptor lfd, int cmd, struct flock *lck) {
 
 	case F_SETLK:
 		if (lck->l_type == F_UNLCK) {
+			printf("tentative suppression verrou, segment : [%li, %li]\n", lck->l_start, lck->l_start + lck->l_len);
 			return rl_fcntl_unlock(&lfd, lck);
 		}
 		else if (lck->l_type == F_WRLCK) {
+			printf("tentative pose verrou écriture, segment : [%li, %li]\n", lck->l_start, lck->l_start + lck->l_len);
 			return rl_fcntl_wlock(&lfd, lck);
 		} else if (lck->l_type == F_RDLCK) {
+			printf("tentative pose verrou lecture, segment : [%li, %li]\n", lck->l_start, lck->l_start + lck->l_len);
 			return rl_fcntl_rlock(&lfd, lck);
 		}
 		break;
@@ -881,12 +881,12 @@ void rl_debug() {
 			return;
 		}
 
-		printf("=============\nFile n°%d\n=============\n", i);
+		printf("Etat des verrous :\n\tFile n°%d\n", i);
 
 		rl_lock *curr_lock = &file->lock_table[file->first];
 		do {
 
-			printf("%s lock (%ld to %ld)\n\tOwners:\n", curr_lock->type == F_WRLCK ? "WRITE" : "READ", curr_lock->starting_offset, curr_lock->starting_offset + curr_lock->len);
+			printf("\t%s lock (%ld -> %ld)\n\tOwners:\n", curr_lock->type == F_WRLCK ? "WRITE" : "READ", curr_lock->starting_offset, curr_lock->starting_offset + curr_lock->len);
 
 			for (size_t j = 0; j < curr_lock->nb_owners; j++) {
 

@@ -5,7 +5,7 @@
 
 int main(void) {
 
-	rl_descriptor desc = rl_open("test", O_RDONLY | O_CREAT, 0644);
+	rl_descriptor desc = rl_open("fichier_verrous", O_RDONLY | O_CREAT, 0644);
 	if(desc.d < 0 || desc.f == NULL) {
 		perror("rl_open");
 		return EXIT_FAILURE;
