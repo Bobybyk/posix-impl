@@ -440,8 +440,12 @@ rl_descriptor rl_open(const char *path, int oflag, ...) {
 		pthread_cond_signal(&file->cond);
 }
 
-/* Fonction auxilliere */
-
+/**
+ * @brief ajoute un verrou dans la liste de verrous
+ * @param lfd descripteur de fichier
+ * @param lck verrou à ajouter
+ * @return 0 si succès, -1 sinon
+ */
 int add_lock(rl_descriptor *lfd, rl_lock * lck) {
 	int ptr = lfd->f->first;
 	if (ptr == -2) {
@@ -449,13 +453,13 @@ int add_lock(rl_descriptor *lfd, rl_lock * lck) {
 		lfd->f->lock_table[0] = *lck;
 		return 0;
 	}
-	// ON AJOUTE LE LOCK DANS UNE CASE NON UTILISE
+	// ajout du lock dans une case libre
 	int i;
 	for (i = 0; i < NB_LOCKS; i++) {
 		if (lfd->f->lock_table[i].next_lock == -2)break;
 	}
 	int prev = 0;
-	// ON PARCOURS LA LISTE DE LOCK
+	// parcours de la liste de lock
 	while (ptr != -2 && ptr != -1) {
 		prev = ptr;
 		ptr = lfd->f->lock_table[ptr].next_lock;
@@ -466,12 +470,11 @@ int add_lock(rl_descriptor *lfd, rl_lock * lck) {
 	return i;
 }
 
-/*
+/**
  *   Cette function supprime un lock
  *   @param lock: Le lock à supprimer
  *   @param rl_descriptor: Le pointeur vers le descripteur auquel il faut supprimer le lock
  */
- 
 static void delete_lock(rl_descriptor *des, int lock) {
     if (des->f->first != lock) {
         int i = des->f->first;
@@ -492,13 +495,13 @@ static void delete_lock(rl_descriptor *des, int lock) {
     des->f->lock_table[lock].next_lock = -2;
 }
 
-/*
- *@param start: Nouveau début du lock
- *@param end: Nouveau fin du lock
- *@param rl_lock : rl_lock à dupliquer à la nouvelle position
- * Cette fonction permet de transformer un rl_lock avec ses nouvelles coordonnées
-	[##### 0 - 100 ######]
-	   [### 10 - 80 ###]
+/**
+ * @brief transforme un rl_lock en rl_lock avec les nouvelles coordonnées
+ * 	[##### 0 - 100 ######] -> [### 10 - 80 ###]
+ * @param start: Nouveau début du lock
+ * @param end: Nouveau fin du lock
+ * @param lfd: Descripteur de fichier
+ * @param copy: Le lock à copier
  */
 void change_lock_position(int start, int end, rl_descriptor *lfd, rl_lock * copy) {
 	rl_lock new_r_lock = {
@@ -517,6 +520,12 @@ void change_lock_position(int start, int end, rl_descriptor *lfd, rl_lock * copy
 	add_lock(lfd, &new_r_lock);
 }
 
+/**
+ * @brief supprime un verrou dans la liste de verrous
+ * @param lfd descripteur de fichier
+ * @param lck verrou à supprimer
+ * @return 0 si succès, -1 sinon
+ */
 int rl_fcntl_unlock_all(rl_descriptor *lfd, struct flock *lck) {
 	int lock_start = lck->l_start;
 	int end_lock = lck->l_start + lck->l_len;
@@ -533,7 +542,7 @@ int rl_fcntl_unlock_all(rl_descriptor *lfd, struct flock *lck) {
 			//         [######### SUPRESSION VEROU ############]
 			change_lock_position(current_lock_start, lock_start, lfd, current_lock);
 		}
-		// Car classique: current_lock_start > lock_start
+		// Cas classique: current_lock_start > lock_start
 		//           [#### VERROU ####] [### VERROU 2 ####] etc..
 		//  [############## SUPPRESSION VERROU ###########################]
 		delete_lock(lfd, i);
@@ -543,6 +552,12 @@ int rl_fcntl_unlock_all(rl_descriptor *lfd, struct flock *lck) {
 	return EXIT_SUCCESS;
 }
 
+/**
+ * @brief supprime un verrou dans la liste de verrous
+ * @param lfd descripteur de fichier
+ * @param lck verrou à supprimer
+ * @return 0 si succès, -1 sinon
+ */
 int rl_fcntl_unlock_pos(rl_descriptor *lfd, struct flock *lck) {
 	int lock_start = lck->l_start;
 	int end_lock = lck->l_start + lck->l_len;
@@ -554,27 +569,22 @@ int rl_fcntl_unlock_pos(rl_descriptor *lfd, struct flock *lck) {
 			int current_lock_start = current_lock->starting_offset;
 			int current_lock_end = current_lock->starting_offset + current_lock->len;
 
-//			printf("debut courant %d, fin courant %d, debug verrou %d, fin verrou %d\n", current_lock_start, current_lock_end, lock_start, end_lock);
 			if (current_lock_start == lock_start && current_lock_end == end_lock) {
-//				printf("Cas pile poile\n");
 				delete_lock(lfd, i);
 			} 
 			else if (lock_start >= current_lock_start && lock_start < current_lock_end && current_lock_end < end_lock) {
-	//			printf("Cas 1 de pos\n");
 				// [#### VEROU ####]
 				//            [######### SUPRESSION VEROU ############]
 				change_lock_position(current_lock_start, lock_start, lfd, current_lock);
 				delete_lock(lfd, i);
 			}
 			else if (lock_start <= current_lock_start && current_lock_end >= end_lock && end_lock > current_lock_start) {
-	//			printf("Cas 2 de pos\n");
 				// 						  [### VEROU ####]
 				//        [## SUPRESSION VEROU ##]
 				change_lock_position(end_lock, current_lock_end, lfd, current_lock);
 				delete_lock(lfd, i);
 			}
 			else if (lock_start >= current_lock_start && current_lock_end >= end_lock) {
-	//			printf("Cas 3 de pos\n");
 				// 		[###### VEROU #######]
 				//             [SVEROU]
 				change_lock_position(current_lock_start, lock_start, lfd, current_lock);
@@ -582,10 +592,8 @@ int rl_fcntl_unlock_pos(rl_descriptor *lfd, struct flock *lck) {
 				delete_lock(lfd, i);
 			}
 			
-			// Car classique: current_lock_start > lock_start && end_lock > current_lock_end
 			//           [#### VERROU ####]
 			//       [######deleteLock########]
-			//printf("Situtation classique : delete lock\n");
 		if (current_lock->next_lock == -1) break;
 		i = lfd->f->lock_table[i].next_lock;
 	}
@@ -594,6 +602,9 @@ int rl_fcntl_unlock_pos(rl_descriptor *lfd, struct flock *lck) {
 
 /**
  * @brief Permet de retirer un verrou
+ * @param lfd descripteur de fichier
+ * @param lck verrou à retirer
+ * @return 0 si succès, -1 sinon
 */
 int rl_fcntl_unlock(rl_descriptor *lfd, struct flock *lck) {
 
@@ -762,6 +773,12 @@ static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
 		return EXIT_SUCCESS;
 }
 
+/**
+ * @brief Permet de poser un verrou en lecture en s'assurant que les contraintes sont respectées
+ * On parcourt tous les blocs, pour chaque bloc rencontré, si les blocs se chevauchent et que le bloc chevauché est
+ * un verrou en écriture, on rejette la demande, sinon si le bloc chevauché est un verrou en lecture et de même propriétaire, 
+ * on ajoute le verrou, sinon si les blocs ne se chevauchent pas, on ajoute le verrou
+*/
 static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck) {
 
 	rl_lock new_lock = {
@@ -783,6 +800,7 @@ static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck) {
 	}
 	file->busy = true;
 
+	// s'il n'y a pas de lock on ajoute
 	if (file->first == -2) {
 		file->lock_table[0] = new_lock;
 		file->first = 0;
@@ -795,9 +813,11 @@ static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck) {
 	}
 
 	rl_lock *curr_lock = &file->lock_table[file->first];
+
+	// tant que le verrou courant n'est pas le dernier
 	while (curr_lock->next_lock >= 0) {
 
-		// if the new lock overlaps a WRITE lock -> error
+		// si le nouveau verrou chevauche un WRITE lock -> error
 		if (lock_overlap(new_lock, *curr_lock) && curr_lock->type == F_WRLCK) {
 			printf("chevauchement avec un verrou en écriture, posée d'un verrou en lecture impossible\n");
 			errno = EAGAIN;
@@ -810,17 +830,21 @@ static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck) {
 		curr_lock = &file->lock_table[curr_lock->next_lock];
 	}
 
-	// serach for first available space
+	// on cherche le premier espace libre
 	int i = 0;
 	while (file->lock_table[i].next_lock != -2 && i < NB_LOCKS) {
 		i++;
 	}
 
+	// on ajoute le verrou
 	file->lock_table[i] = new_lock;
+	// on met à jour le next_lock du dernier verrou
 	curr_lock->next_lock = i;
 
+	// on fusionne les verrous qui peuvent l'être
 	merge_locks(lfd);
 
+	// on libère le mutex
 	file->busy = false;
 	pthread_mutex_unlock(&file->mutex);
 	pthread_cond_signal(&file->cond);

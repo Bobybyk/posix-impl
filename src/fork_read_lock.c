@@ -47,8 +47,6 @@ int main(void) {
 
 		puts("parent");
 		rl_debug();
-
-		wait(NULL);
 	}
 
 	rl_close(desc);
