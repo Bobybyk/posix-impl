@@ -850,6 +850,21 @@ static int rl_fcntl_rlock(rl_descriptor *lfd, struct flock *lck) {
 	// tant que le verrou courant n'est pas le dernier
 	while (curr_lock->next_lock >= 0) {
 
+		// cas particulier, si le nouveau verrou n'a pas le même propritétaire qu'un verrou de même taille déjà posé, on ajoute le nouveau propriétaire au verrou existant
+		if(lock_overlap(new_lock, *curr_lock) && 
+			curr_lock->starting_offset == new_lock.starting_offset &&
+			curr_lock->len == new_lock.len &&
+			curr_lock->type == F_RDLCK) {
+				curr_lock->lock_owners[curr_lock->nb_owners] = new_lock.lock_owners[0];
+				curr_lock->nb_owners++;
+
+				file->busy = false;
+				pthread_mutex_unlock(&file->mutex);
+				pthread_cond_signal(&file->cond);
+
+				return 0;
+			}
+
 		// si le nouveau verrou chevauche un WRITE lock -> error
 		if (lock_overlap(new_lock, *curr_lock) && curr_lock->type == F_WRLCK) {
 			printf("chevauchement avec un verrou en écriture, posée d'un verrou en lecture impossible\n");

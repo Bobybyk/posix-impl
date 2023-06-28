@@ -48,6 +48,20 @@ int main(void) {
 
 	printf("=============\n");
 
+	lock.l_start = 270;
+	lock.l_len = 50;
+	ret = rl_fcntl(desc, F_SETLK, &lock);
+	if(ret < 0) {
+		perror("rl_fcntl");
+		printf("echec posée verrou lecture\n");
+		return EXIT_FAILURE;
+	} else {
+		puts("verrou lecture posé");
+	}
+	rl_debug();
+
+	printf("=============\n");
+
     printf("Appuyez sur la touche ENTER pour déverrouiller...\n");
     while (getchar() != '\n'){}
     printf("Déverrouillé !\n");
