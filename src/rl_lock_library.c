@@ -259,6 +259,7 @@ pid_t rl_fork() {
 		return -1;
 	}
 	else if (pid > 0) {
+		sleep(1);
 		return pid;
 	}
 
@@ -273,6 +274,8 @@ pid_t rl_fork() {
 			pthread_cond_wait(&file->cond, &file->mutex);
 		}
 		file->busy = true;
+
+		file->open_files_count++;
 
 		rl_lock *curr = &file->lock_table[file->first];
 
@@ -313,7 +316,7 @@ int rl_close(rl_descriptor lfd) {
     file->busy = true;
 	
 
-    // Parcourt le tableau des verrous et supprime les propriétaires
+    // Parcours le tableau des verrous et supprime les propriétaires
     for (int i = 0; i < NB_LOCKS; i++) {
         rl_lock *lock = &file->lock_table[i];
 
@@ -325,23 +328,53 @@ int rl_close(rl_descriptor lfd) {
 				// on supprime le propriétaire et on supprime le verrou s'il n'y a plus qu'un propriétaire dans rl_open_file
 				lock->lock_owners[j] = lock->lock_owners[lock->nb_owners - 1];
 				lock->nb_owners--;
-				if (lock->nb_owners == 0) {
-					// on supprime le verrou
-					if (lock->next_lock >= 0) {
-						// on supprime le verrou de la liste
-						rl_lock *next_lock = &file->lock_table[lock->next_lock];
-						lock->next_lock = next_lock->next_lock;
-						next_lock->next_lock = -2;
-					}
-					else {
-						// on supprime le verrou de la liste
-						file->first = -2;
-					}
-				}
                 break;
             }
         }
     }
+
+	// supprime les verrous sans propriétaires
+	rl_lock *current_lock = &file->lock_table[file->first];
+	rl_lock *previous = NULL;
+
+	if (current_lock->nb_owners == 0 && current_lock->next_lock == -1) {
+		current_lock->next_lock = -2;
+		file->first = -2;
+	}
+
+	while(current_lock->next_lock > -2) {
+
+		if(current_lock->nb_owners == 0 && previous != NULL) {
+			previous->next_lock = current_lock->next_lock;
+			current_lock->next_lock = -2;
+			
+			current_lock = previous;
+			continue;
+		} else if(current_lock->nb_owners == 0) {
+
+			int next = current_lock->next_lock;
+
+			if(current_lock->next_lock == -1) {
+				file->first = -2;
+				current_lock->next_lock = -2;
+				break;
+			}
+
+			file->first = current_lock->next_lock;
+			current_lock->next_lock = -2;
+
+			current_lock = &file->lock_table[next];
+			continue;
+		}
+
+		previous = current_lock;
+
+		if(current_lock->next_lock == -1) {
+			break;
+		}
+
+		current_lock = &file->lock_table[current_lock->next_lock];
+	}
 
 	file->open_files_count--;
 

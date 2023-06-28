@@ -22,6 +22,10 @@ int main(void) {
 
 	printf("=============\n");
 
+	rl_debug();
+
+	printf("=============\n");
+
 	 int ret = rl_fcntl(desc, F_SETLK, &lock);
 	if(ret < 0) {
 		perror("rl_fcntl");

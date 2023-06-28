@@ -26,6 +26,12 @@ int main(void) {
 		return EXIT_FAILURE;
 	}
 
+	printf("=============\n");
+
+	rl_debug();
+	
+	printf("=============\n");
+
 	pid_t pid = rl_fork();
 	if(pid == -1) {
 		perror("rl_fork");
@@ -33,6 +39,7 @@ int main(void) {
 
 		puts("enfant");
 		rl_debug();
+		printf("=============\n");
 
 		lock.l_start = 300;
 		lock.l_len = 50;
@@ -43,12 +50,16 @@ int main(void) {
 		}
 		puts("verrou posé");
 		rl_debug();
+		printf("=============\n");
 	} else {		//parent
 
 		sleep(5);
 
 		puts("parent");
 		rl_debug();
+		printf("=============\n");
+
+		wait(NULL);
 	}
 
 	rl_close(desc);
