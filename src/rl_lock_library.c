@@ -311,6 +311,7 @@ int rl_close(rl_descriptor lfd) {
         pthread_cond_wait(&file->cond, &file->mutex);
     }
     file->busy = true;
+	
 
     // Parcourt le tableau des verrous et supprime les propriétaires
     for (int i = 0; i < NB_LOCKS; i++) {
@@ -331,7 +332,6 @@ int rl_close(rl_descriptor lfd) {
 						rl_lock *next_lock = &file->lock_table[lock->next_lock];
 						lock->next_lock = next_lock->next_lock;
 						next_lock->next_lock = -2;
-						file->open_files_count--;
 					}
 					else {
 						// on supprime le verrou de la liste
@@ -342,6 +342,8 @@ int rl_close(rl_descriptor lfd) {
             }
         }
     }
+
+	file->open_files_count--;
 
 	// on supprime le smo si plus aucun processus n'utilise le fichier
 	if (file->open_files_count <= 0) {
