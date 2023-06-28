@@ -786,6 +786,13 @@ static int rl_fcntl_wlock(rl_descriptor *lfd, struct flock *lck) {
 
         if (curr_lock->starting_offset + curr_lock->len > new_lock.starting_offset) {
             if (curr_lock->type == F_WRLCK && curr_lock->nb_owners == 1) {
+
+				file->busy = false;
+                pthread_mutex_unlock(&file->mutex);
+				pthread_cond_signal(&file->cond);
+
+				errno = EAGAIN;
+				return -1;
 				/* printf("remove write lock\n");
 
                 // Remove existing write lock and add the new write lock
