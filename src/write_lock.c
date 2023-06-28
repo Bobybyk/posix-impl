@@ -5,6 +5,8 @@
 
 int main(void) {
 
+  	rl_init_library();
+
     rl_descriptor desc = rl_open("fichier_verrous", O_RDONLY | O_CREAT, 0644);
 	if(desc.d < 0 || desc.f == NULL) {
 		perror("rl_open");

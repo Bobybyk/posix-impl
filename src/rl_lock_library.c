@@ -424,11 +424,12 @@ rl_descriptor rl_open(const char *path, int oflag, ...) {
 		if (ret < 0) {
 			return desc;
 		}
+		for (int i = 0; i < NB_LOCKS; i++) {
+			file->lock_table[i].next_lock = -2;
+		}
 	}
 
-	for (int i = 0; i < NB_LOCKS; i++) {
-		file->lock_table[i].next_lock = -2;
-	}
+
 
 	// initialisation avec bonnes valeurs
 	desc.d = fd;
@@ -453,6 +454,7 @@ int add_lock(rl_descriptor *lfd, rl_lock * lck) {
 	if (ptr == -2) {
 		lck->next_lock = -1;
 		lfd->f->lock_table[0] = *lck;
+		lfd->f->first = 0;
 		return 0;
 	}
 	// ajout du lock dans une case libre
